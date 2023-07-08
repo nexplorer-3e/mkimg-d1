@@ -1,0 +1,144 @@
+name: revyos-kernel-build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  xuetie_toolchain: https://occ-oss-prod.oss-cn-hangzhou.aliyuncs.com/resource//1663142514282
+  toolchain_file_name: Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1-20220906.tar.gz
+  #   TODO: confirm toolchain
+  toolchain_tripe: riscv64-linux-gnu-
+  ARCH: riscv
+
+jobs:
+  kernel:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Install software
+        run: |
+              sudo apt update && \
+              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
+                                  libncurses-dev gawk flex bison openssl libssl-dev tree \
+                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
+              sudo update-alternatives --install \
+                  /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
+              sudo update-alternatives --install \
+                  /usr/bin/riscv64-linux-gnu-g++ riscv64-g++ /usr/bin/riscv64-linux-gnu-g++-12 10
+
+      - name: Checkout kernel
+        uses: actions/checkout@v3
+        with:
+            repository: 'smaeul/linux'
+            ref: 'd1/wip'
+            path: 'kernel'
+
+      - name: Configure toolchains
+        run: |
+              mkdir rootfs && mkdir rootfs/boot
+              wget ${xuetie_toolchain}/${toolchain_file_name}
+              tar -xvf ${toolchain_file_name} -C /opt
+
+      - name: Compile Kernel && Install
+        run: |
+              export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
+
+              pushd kernel
+                # TODO: confirm config for target board
+                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} nezha_defconfig
+                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc)
+                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc) dtbs
+                if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
+                  sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
+                fi
+                # sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
+
+                # Install Kernel
+                sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
+
+                # record commit-id
+                git rev-parse HEAD > kernel-commitid
+                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
+
+                # Install DTB
+                # TODO: dtb name
+                sudo cp -v arch/riscv/boot/dts/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+              popd
+
+      - name: compress
+        run: tar -zcvf kernel.tar.gz rootfs
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: kernel.tar.gz
+          path: kernel.tar.gz
+          retention-days: 30
+
+  misc:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install software
+        run: |
+              sudo apt update && \
+              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
+                                  libncurses-dev gawk flex bison openssl libssl-dev tree \
+                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
+              sudo update-alternatives --install \
+                  /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
+              sudo update-alternatives --install \
+                  /usr/bin/riscv64-linux-gnu-g++ riscv64-g++ /usr/bin/riscv64-linux-gnu-g++-12 10
+
+      - name: Checkout uboot
+        uses: actions/checkout@v3
+        with:
+            repository: 'smaeul/u-boot'
+            ref: 'd1-wip'
+            path: 'uboot'
+
+      - name: Checkout opensbi
+        uses: actions/checkout@v3
+        with:
+            repository: 'riscv-software-src/opensbi'
+            ref: 'master'
+            path: 'opensbi'
+
+      - name: Configure toolchains
+        run: |
+              mkdir rootfs && mkdir rootfs/boot
+              wget ${xuetie_toolchain}/${toolchain_file_name}
+              tar -xvf ${toolchain_file_name} -C /opt
+
+      - name: opensbi compile
+        run: |
+            export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
+      
+            pushd opensbi
+              make PLATFORM=generic ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} FW_PIC=y
+              sudo install -D -p -m 644 build/platform/generic/firmware/fw_dynamic.bin \
+                  "${GITHUB_WORKSPACE}/rootfs/boot/"
+            popd
+            tree ${GITHUB_WORKSPACE}/rootfs
+
+      - name: uboot compile
+        run: |
+              export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
+
+              pushd uboot
+                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} nezha_defconfig
+                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc)
+                find . -name "fw_dynamic.bin" | xargs -I{} cp -av {} ${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin
+              popd
+              tree ${GITHUB_WORKSPACE}/rootfs
+
+      - name: compress
+        run: tar -zcvf misc.tar.gz rootfs
+
+      - name: 'Upload Artifact'
+        uses: actions/upload-artifact@v3
+        with:
+          name: misc.tar.gz
+          path: misc.tar.gz
+          retention-days: 30
