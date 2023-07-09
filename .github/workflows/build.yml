@@ -6,9 +6,10 @@ on:
   workflow_dispatch:
 
 env:
+  # TODO: add timestamp on output bin files
   xuetie_toolchain: https://occ-oss-prod.oss-cn-hangzhou.aliyuncs.com/resource//1663142514282
   toolchain_file_name: Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1-20220906.tar.gz
-  #   TODO: confirm toolchain
+  # TODO: confirm toolchain
   toolchain_tripe: riscv64-linux-gnu-
   ARCH: riscv
 
@@ -63,8 +64,7 @@ jobs:
                 sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
-                # TODO: dtb name
-                sudo cp -v arch/riscv/boot/dts/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+                sudo cp -v arch/riscv/boot/dts/allwinner/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
               popd
 
       - name: compress
@@ -129,7 +129,8 @@ jobs:
               pushd uboot
                 make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} nezha_defconfig
                 make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc)
-                find . -name "fw_dynamic.bin" | xargs -I{} cp -av {} ${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin
+                sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
+                  "${GITHUB_WORKSPACE}/rootfs/boot/"
               popd
               tree ${GITHUB_WORKSPACE}/rootfs
 
