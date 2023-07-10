@@ -116,7 +116,7 @@ jobs:
             export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
       
             pushd opensbi
-              make PLATFORM=generic ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} FW_PIC=y
+              ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} PLATFORM=generic FW_PIC=y make
               sudo install -D -p -m 644 build/platform/generic/firmware/fw_dynamic.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/"
             popd
@@ -127,8 +127,8 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd uboot
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} nezha_defconfig
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc)
+                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} make nezha_defconfig
+                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/"
               popd
