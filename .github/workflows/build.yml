@@ -160,6 +160,21 @@ jobs:
                 # Copy kernel deb packages
                 make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} bindeb-pkg -j$(nproc)
                 cp -v ../*.deb ${GITHUB_WORKSPACE}/rootfs/
+
+                # Install RTL8723DS Driver
+                git clone https://github.com/lwfinger/rtl8723ds.git
+                pushd rtl8723ds
+                    make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} KSRC=../ -j$(nproc) modules || true
+                popd
+                for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
+                do
+                    sudo install -D -p -m 644 "rtl8723ds/8723ds.ko" \
+                        "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/kernel/drivers/net/wireless/8723ds.ko"
+                    depmod -a -b "${GITHUB_WORKSPACE}/rootfs" "${kernel_version}"
+                    echo '8723ds' >> 8723ds.conf
+                    sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/
+                    sudo cp -v 8723ds.conf "${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/"
+                done
               popd
 
       - name: compress
