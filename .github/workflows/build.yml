@@ -188,6 +188,22 @@ jobs:
           retention-days: 30
 
   misc:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: devterm_r_01
+            board_config: devterm_r_01_defconfig
+          - name: dongshan_nezha_stu
+            board_config: dongshan_nezha_stu_defconfig
+          - name: lichee_rv_86_panel
+            board_config: lichee_rv_86_panel_defconfig
+          - name: lichee_rv_dock
+            board_config: lichee_rv_dock_defconfig
+          - name: mangopi_mq_pro
+            board_config: mangopi_mq_pro_defconfig
+          - name: nezha
+            board_config: nezha_defconfig
     runs-on: ubuntu-22.04
     steps:
       - name: Install software
@@ -237,19 +253,19 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd uboot
-                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} make nezha_defconfig
+                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} make ${{ matrix.board_config }}
                 ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
-                  "${GITHUB_WORKSPACE}/rootfs/boot/"
+                  "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-${{ matrix.name }}-with-spl.bin"
               popd
               tree ${GITHUB_WORKSPACE}/rootfs
 
       - name: compress
-        run: tar -zcvf misc.tar.gz rootfs
+        run: tar -zcvf misc-${{ matrix.name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: misc.tar.gz
-          path: misc.tar.gz
+          name: misc-${{ matrix.name }}.tar.gz
+          path: misc-${{ matrix.name }}.tar.gz
           retention-days: 30
