@@ -9,13 +9,22 @@ env:
   # TODO: add timestamp on output bin files
   xuetie_toolchain: https://occ-oss-prod.oss-cn-hangzhou.aliyuncs.com/resource//1663142514282
   toolchain_file_name: Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1-20220906.tar.gz
-  # TODO: confirm toolchain
-  toolchain_tripe: riscv64-linux-gnu-
   ARCH: riscv
 
 jobs:
   kernel:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: thead-gcc
+            toolchain_tripe: riscv64-unknown-linux-gnu-
+          - name: gcc-12
+            toolchain_tripe: riscv64-linux-gnu-
+
     runs-on: ubuntu-22.04
+    env:
+      CROSS_COMPILE: ${{ matrix.toolchain_tripe }}
 
     steps:
       - name: Install software
@@ -32,8 +41,8 @@ jobs:
       - name: Checkout kernel
         uses: actions/checkout@v3
         with:
-            repository: 'smaeul/linux'
-            ref: 'd1/wip'
+            repository: 'revyos/d1-kernel'
+            ref: 'd1/vector-support'
             path: 'kernel'
 
       - name: Configure toolchains
@@ -137,17 +146,17 @@ jobs:
                 echo 'CONFIG_RD_LZ4=y' >> arch/riscv/configs/nezha_defconfig
                 echo 'CONFIG_RD_ZSTD=y' >> arch/riscv/configs/nezha_defconfig
 
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} nezha_defconfig
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc)
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} -j$(nproc) dtbs
+                make nezha_defconfig
+                make -j$(nproc)
+                make -j$(nproc) dtbs
                 if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                  sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
+                  sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
                 fi
-                # sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
+                # sudo make INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
 
                 # Install Kernel
-                sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install
-                sudo make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot dtbs_install
+                sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install
+                sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot dtbs_install
                 sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # record commit-id
@@ -158,13 +167,13 @@ jobs:
                 # sudo cp -v arch/riscv/boot/dts/allwinner/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Copy kernel deb packages
-                make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} bindeb-pkg -j$(nproc)
+                make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} bindeb-pkg -j$(nproc)
                 cp -v ../*.deb ${GITHUB_WORKSPACE}/rootfs/
 
                 # Install RTL8723DS Driver
                 git clone https://github.com/lwfinger/rtl8723ds.git
                 pushd rtl8723ds
-                    make ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} KSRC=../ -j$(nproc) modules || true
+                    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} KSRC=../ -j$(nproc) modules || true
                 popd
                 for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
                 do
@@ -178,13 +187,13 @@ jobs:
               popd
 
       - name: compress
-        run: tar -zcvf kernel.tar.gz rootfs
+        run: tar -zcvf kernel-${{ matrix.name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: kernel.tar.gz
-          path: kernel.tar.gz
+          name: kernel-${{ matrix.name }}.tar.gz
+          path: kernel-${{ matrix.name }}.tar.gz
           retention-days: 30
 
   misc:
@@ -205,6 +214,8 @@ jobs:
           - name: nezha
             board_config: nezha_defconfig
     runs-on: ubuntu-22.04
+    env:
+      CROSS_COMPILE: riscv64-linux-gnu-
     steps:
       - name: Install software
         run: |
@@ -242,7 +253,7 @@ jobs:
             export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
       
             pushd opensbi
-              ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} PLATFORM=generic FW_PIC=y make
+              PLATFORM=generic FW_PIC=y make
               sudo install -D -p -m 644 build/platform/generic/firmware/fw_dynamic.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/"
             popd
@@ -253,8 +264,8 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd uboot
-                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} make ${{ matrix.board_config }}
-                ARCH=${ARCH} CROSS_COMPILE=${toolchain_tripe} OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
+                make ${{ matrix.board_config }}
+                OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-${{ matrix.name }}-with-spl.bin"
               popd
