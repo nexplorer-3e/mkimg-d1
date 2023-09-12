@@ -96,7 +96,7 @@ make_kernel()
 {
     # Install Kernel
     mkdir $KERNEL_FOLDER
-    unzip kernel.tar.gz.zip
+    [ -f kernel.tar.gz ] || unzip kernel.tar.gz.zip
     tar xvf kernel.tar.gz -C $KERNEL_FOLDER/
     cp -rv $KERNEL_FOLDER/rootfs/boot/* $CHROOT_TARGET/boot/
     cp -rv $KERNEL_FOLDER/rootfs/lib/* $CHROOT_TARGET/lib/
@@ -108,7 +108,7 @@ make_bootable()
 {
     # Install u-boot and opensbi
     mkdir $UBOOT_FOLDER
-    unzip misc.tar.gz.zip
+    [ -f misc.tar.gz ] || unzip misc.tar.gz.zip
     tar xvf misc.tar.gz -C $UBOOT_FOLDER/
     dd if="${UBOOT_FOLDER}/rootfs/boot/u-boot-sunxi-with-spl.bin" of="${LOOP_DEVICE}" bs=1024 seek=128
     rm -v misc.tar.gz
@@ -184,7 +184,7 @@ unmount_image()
 	if [ "$(ls -A $CHROOT_TARGET)" ]; then
 		echo "folder not empty! umount may fail!"
 		exit 2
-	else
+	elif [ -n $KEEP_ROOTFS ]; then
 		echo "Deleting chroot temp folder..."
 		if [ -d "$CHROOT_TARGET" ]; then
 			rmdir -v "$CHROOT_TARGET"
@@ -214,6 +214,7 @@ main()
 	make_rootfs
 	make_kernel
 	make_bootable
+  # keep rootfs if KEEP_ROOTFS is not empty, uses in ci
 	after_mkrootfs
 	exit
 }
