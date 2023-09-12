@@ -62,14 +62,28 @@ jobs:
             repository: 'revyos/d1-kernel'
             ref: 'd1/vector-support'
             path: 'kernel'
+            depth: 1
 
+      - name: Hash branch status
+        run: |
+          git -C kernel log -1 > refs.log
+
+      - name: Skip if branch has compiled
+        id: cache-kernel
+        uses: actions/cache@v3
+        with:
+          path: refs.log
+          key: ${{ hashFiles('refs.log') }}
+            
       - name: Configure toolchains
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: |
               mkdir rootfs && mkdir rootfs/boot
               wget ${xuetie_toolchain}/${toolchain_file_name}
               tar -xvf ${toolchain_file_name} -C /opt
 
       - name: Compile Kernel && Install
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: |
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
@@ -218,7 +232,27 @@ jobs:
             ref: 'master'
             path: 'opensbi'
 
+      - name: Hash branch status
+        run: |
+          git -C uboot log -1 > refs.log
+          git -C opensbi log -1 >> refs.log
+
+      - name: Skip if branch has compiled
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: refs.log
+          key: ${{ hashFiles('refs.log') }}
+       
+      - name: Configure toolchains
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+              mkdir rootfs && mkdir rootfs/boot
+              wget ${xuetie_toolchain}/${toolchain_file_name}
+              tar -xvf ${toolchain_file_name} -C /opt
+
       - name: opensbi compile
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
             export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
       
@@ -230,6 +264,7 @@ jobs:
             tree ${GITHUB_WORKSPACE}/rootfs
 
       - name: uboot compile
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
@@ -281,9 +316,11 @@ jobs:
           popd
 
       - name: compress
+        if: steps.cache.outputs.cache-hit != 'true'
         run: tar -zcvf ${{ matrix.board_name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
+        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.board_name }}.tar.gz
