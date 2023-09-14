@@ -123,17 +123,30 @@ make_bootable()
 {
     # Install u-boot and opensbi
     mkdir $UBOOT_FOLDER
-    ( ls misc*.tar.gz ) || unzip misc*.tar.gz.zip
+    [ -f misc*.tar.gz ] || unzip misc*.tar.gz.zip
     _UBOOT_SPL_BIN=$(tar xvf misc*.tar.gz -C $UBOOT_FOLDER/ | grep -o ".*-with-spl.bin")
     dd if=${UBOOT_FOLDER}/${_UBOOT_SPL_BIN} of="${LOOP_DEVICE}" bs=1024 seek=128
     rm -v misc*.tar.gz
     rm -r $UBOOT_FOLDER
 
-    chroot "$CHROOT_TARGET" sh -c "apt install -y u-boot-menu" || [ -n $ROOTFS_TARBALL ] && echo apt install u-boot fail
-    chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_ROOT="root=/dev/mmcblk0p2"' | tee -a /etc/default/u-boot"
+    APT_UBOOT="apt-get install -y u-boot-menu"
+    if [ -n $ROOTFS_TARBALL ]; then
+        case $ROOTFS_TARBALL in 
+            *alpine*)
+                APT_UBOOT="apk add u-boot-menu"
+                ;;
+            *debian*)
+                ;;
+            *)
+                APT_UBOOT=""
+                ;;
+        esac
+    fi
+    chroot "$CHROOT_TARGET" sh -c "$APT_UBOOT"
+    chroot "$CHROOT_TARGET" sh -c "mkdir -p /etc/default && echo 'U_BOOT_ROOT="root=/dev/mmcblk0p2"' | tee -a /etc/default/u-boot"
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_PARAMETERS=\"rw earlycon=sbi console=tty0 console=ttyS0,115200 rootwait \"' | tee -a /etc/default/u-boot"
     # chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_FDT_DIR=\"/boot/dtbs/\"' | tee -a /etc/default/u-boot"
-    chroot "$CHROOT_TARGET" sh -c "u-boot-update" && echo u-boot-update fail
+    chroot "$CHROOT_TARGET" sh -c "u-boot-update || update-u-boot" && echo u-boot-update fail
 }
 
 after_mkrootfs()
@@ -145,8 +158,8 @@ after_mkrootfs()
 	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$ROOT_UUID	/	ext4	rw,relatime	0 1' >> /etc/fstab"
 
     # Add user
-    chroot "$CHROOT_TARGET" sh -c "useradd -m -s /bin/bash -G adm,sudo debian" || [ -n $ROOTFS_TARGET ] && echo useradd fail
-    chroot "$CHROOT_TARGET" sh -c "echo 'debian:debian' | chpasswd" || [ -n $ROOTFS_TARGET ] && echo chpasswd fail
+    chroot "$CHROOT_TARGET" sh -c "useradd -m -s /bin/bash -G adm,sudo debian || adduser -h /home/debian -G sys debian"
+    chroot "$CHROOT_TARGET" sh -c "echo 'debian:debian' | chpasswd"
 
     # Change hostname
 	chroot "$CHROOT_TARGET" sh -c "echo d1 > /etc/hostname"
@@ -183,7 +196,7 @@ after_mkrootfs()
     # chroot "$CHROOT_TARGET" sh -c "update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy"
 
     # refresh so libs
-    chroot "$CHROOT_TARGET" sh -c "rm -v /etc/ld.so.cache"
+    chroot "$CHROOT_TARGET" sh -c "rm -v /etc/ld.so.cache" || echo rm /etc/ld.so.cache failed
     chroot "$CHROOT_TARGET" sh -c "ldconfig"
 }
 
