@@ -48,13 +48,13 @@ jobs:
 
       - name: Hash branch status
         run: |
-          git -C kernel log -1 > refs.log
+          git -C kernel log -1 |tee refs.log
 
       - name: Skip if branch has compiled
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
-          path: refs.log
+          path: kernel-${{ matrix.name }}.tar.gz
           key: ${{ hashFiles('refs.log') }}
             
       - name: Configure toolchains
@@ -204,8 +204,13 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: tar -zcvf kernel-${{ matrix.name }}.tar.gz rootfs
 
-      - name: 'Upload Artifact'
+      - uses: actions/cache/save@v3
         if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: kernel-${{ matrix.name }}.tar.gz
+          key: ${{ hashFiles('refs.log') }}
+
+      - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
           name: kernel-${{ matrix.name }}.tar.gz
@@ -250,6 +255,7 @@ jobs:
             repository: 'smaeul/u-boot'
             ref: 'd1-wip'
             path: 'uboot'
+            depth: 1
 
       - name: Checkout opensbi
         uses: actions/checkout@v3
@@ -257,17 +263,18 @@ jobs:
             repository: 'riscv-software-src/opensbi'
             ref: 'master'
             path: 'opensbi'
+            depth: 1
 
       - name: Hash branch status
         run: |
-          git -C uboot log -1 > refs.log
-          git -C opensbi log -1 >> refs.log
+          git -C uboot log -1 |tee refs.log
+          git -C opensbi log -1 |tee -a refs.log
 
       - name: Skip if branch has compiled
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
-          path: refs.log
+          path: misc-${{ matrix.name }}.tar.gz
           key: ${{ hashFiles('refs.log') }}
        
       - name: Configure toolchains
@@ -306,10 +313,65 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: tar -zcvf misc-${{ matrix.name }}.tar.gz rootfs
 
-      - name: 'Upload Artifact'
+      - uses: actions/cache/save@v3
         if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: misc-${{ matrix.name }}.tar.gz
+          key: ${{ hashFiles('refs.log') }}
+
+      - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
           name: misc-${{ matrix.name }}.tar.gz
           path: misc-${{ matrix.name }}.tar.gz
-          retention-days: 30
+            
+  revyos-rootfs:
+    runs-on: ubuntu-latest
+    needs:
+      - misc
+      - kernel
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [devterm_r_01, dongshan_nezha_stu, lichee_rv_86_panel, lichee_rv_dock, mangopi_mq_pro, nezha]
+        kernel-toolchain-type: [gcc-12]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: get cached bootloaders (misc stuff)
+        uses: actions/cache/restore@v3
+        with:
+          path: misc.tar.gz
+          key: ${{ matrix.name }}
+
+      - name: get kernel
+        uses: actions/cache/restore@v3
+        with:
+          path: kernel.tar.gz
+          key: ${{ matrix.kernel-toolchain-type }}
+
+      - name: build rootfs
+        run: |
+          sudo apt-get install -y qemu-user-static qemu-utils mmdebstrap
+          sudo KEEP_ROOTFS=y bash mkimg.sh
+          mv d1-sdcard-*.img d1.img
+          qemu-img convert -f raw -O qcow2 d1.img d1.qcow2
+          tar cJvf rootfs.tar.xz -C target/ .
+
+      - name: upload tarball with boot stuff
+        uses: actions/upload-artifact@v3
+        with:
+          name: rootfs.tar.xz
+          path: rootfs-${{ matrix.name }}.tar.xz
+
+      - name: upload qcow2
+        uses: actions/upload-artifact@v3
+        with:
+          name: d1.qcow2
+          path: d1-sdcard-${{ matrix.name }}.qcow2
+
+      - name: upload raw image
+        uses: actions/upload-artifact@v3
+        with:
+          name: d1.img
+          path: d1-sdcard-${{ matrix.name }}.img
