@@ -74,13 +74,6 @@ pre_mkrootfs()
 
 make_rootfs()
 {
-<<<<<<< HEAD
-    mmdebstrap --architectures=riscv64 --variant=minbase \
-    --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
-        sudo bash-completion network-manager openssh-server systemd-timesyncd" \
-    sid "$CHROOT_TARGET" \
-    "deb https://mirror.iscas.ac.cn/debian-ports/ sid main contrib non-free"
-=======
     if [ -n $ROOTFS_TARBALL ] && ! (tar xf $ROOTFS_TARBALL -C $CHROOT_TARGET) ; then
         mmdebstrap --architectures=riscv64 --variant=minbase \
         --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
@@ -88,7 +81,6 @@ make_rootfs()
         sid "$CHROOT_TARGET" \
         "deb [trusted=yes] ${CUSTOM_MIRROR:-"https://deb.debian.org/debian-ports"} sid main contrib non-free"
     fi
->>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 
     # Mount chroot path
     [ -d "$CHROOT_TARGET"/boot ] || mkdir "$CHROOT_TARGET"/boot
@@ -100,11 +92,7 @@ make_rootfs()
     # mount -B /dev/pts "$CHROOT_TARGET"/dev/pts
 
     # apt update
-<<<<<<< HEAD
-    chroot "$CHROOT_TARGET" sh -c "apt update"
-=======
     chroot "$CHROOT_TARGET" sh -c "apt update && sed -i 's/\[trusted=yes\] //g' /etc/apt/sources.list" || [ -n $ROOTFS_TARBALL ] && echo custom tarball apt update fail
->>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 }
 
 make_kernel()
@@ -123,15 +111,15 @@ make_bootable()
 {
     # Install u-boot and opensbi
     mkdir $UBOOT_FOLDER
-    [ -f misc*.tar.gz ] || unzip misc*.tar.gz.zip
+    ( ls misc*.tar.gz ) || unzip misc*.tar.gz.zip
     _UBOOT_SPL_BIN=$(tar xvf misc*.tar.gz -C $UBOOT_FOLDER/ | grep -o ".*-with-spl.bin")
     dd if=${UBOOT_FOLDER}/${_UBOOT_SPL_BIN} of="${LOOP_DEVICE}" bs=1024 seek=128
     rm -v misc*.tar.gz
     rm -r $UBOOT_FOLDER
 
     APT_UBOOT="apt-get install -y u-boot-menu"
-    if [ -n $ROOTFS_TARBALL ]; then
-        case $ROOTFS_TARBALL in 
+    if [ -n "$ROOTFS_TARBALL" ]; then
+        case "$ROOTFS_TARBALL" in 
             *alpine*)
                 APT_UBOOT="apk add u-boot-menu"
                 ;;
@@ -236,14 +224,6 @@ cleanup_env()
 
 main()
 {
-<<<<<<< HEAD
-# 	install_depends
-	make_imagefile
-	pre_mkrootfs
-	make_rootfs
-	make_kernel
-	make_bootable
-=======
 #   install_depends
     make_imagefile
     pre_mkrootfs
@@ -252,7 +232,6 @@ main()
     make_rootfs
     make_kernel
     make_bootable
->>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
   # keep rootfs if KEEP_ROOTFS is not empty, uses in ci
 	after_mkrootfs
 	exit
@@ -270,22 +249,7 @@ trap clean_on_exit EXIT
 clean_on_exit()
 {
 <<<<<<< HEAD
-    chroot "$CHROOT_TARGET" bash
-	if [ $? -eq 0 ]; then
-		unmount_image
-		cleanup_env
-		echo "exit."
-	else
-		unmount_image
-		cleanup_env
-		if [ -f $IMAGE_FILE ]; then
-			echo "delete image $IMAGE_FILE ..."
-			rm -v "$IMAGE_FILE"
-		fi
-		echo "interrupted exit."
-	fi
-=======
-    if ( chroot "$CHROOT_TARGET" bash ) ; then
+    if ( chroot "$CHROOT_TARGET" bash ) || [ -z "$KEEP_IMAGE" ]; then
         unmount_image
         cleanup_env
         echo "exit."
@@ -298,7 +262,6 @@ clean_on_exit()
         fi
         echo "interrupted exit."
     fi
->>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 }
 
 main
