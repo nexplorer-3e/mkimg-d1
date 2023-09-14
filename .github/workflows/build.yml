@@ -210,6 +210,9 @@ jobs:
           path: kernel-${{ matrix.name }}.tar.gz
           key: ${{ hashFiles('refs.log') }}
 
+      - id: key
+        run: echo "KEY=${{ hashFiles('refs.log') }}" >> $GITHUB_OUTPUT
+
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
@@ -254,7 +257,6 @@ jobs:
             repository: 'smaeul/u-boot'
             ref: 'd1-wip'
             path: 'uboot'
-            depth: 1
 
       - name: Checkout opensbi
         uses: actions/checkout@v3
@@ -262,7 +264,6 @@ jobs:
             repository: 'riscv-software-src/opensbi'
             ref: 'master'
             path: 'opensbi'
-            depth: 1
 
       - name: Hash branch status
         run: |
@@ -318,6 +319,9 @@ jobs:
           path: misc-${{ matrix.name }}.tar.gz
           key: ${{ hashFiles('refs.log') }}
 
+      - id: key
+        run: echo "KEY=${{ hashFiles('refs.log') }}" >> $GITHUB_OUTPUT
+
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
@@ -337,17 +341,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: get cached bootloaders (misc stuff)
-        uses: actions/cache/restore@v3
-        with:
-          path: misc.tar.gz
-          key: ${{ matrix.name }}
-
       - name: get kernel
         uses: actions/cache/restore@v3
         with:
           path: kernel.tar.gz
-          key: ${{ matrix.kernel-toolchain-type }}
+          key: ${{ needs.kernel.outputs.KEY }}
+
+      - name: get uboot
+        uses: actions/cache/restore@v3
+        with:
+          path: misc.tar.gz
+          key: ${{ needs.misc.outputs.KEY }}
 
       - name: build rootfs
         run: |
