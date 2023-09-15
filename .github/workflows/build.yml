@@ -356,17 +356,17 @@ jobs:
       - name: upload tarball with boot stuff
         uses: actions/upload-artifact@v3
         with:
-          name: rootfs.tar.xz
-          path: rootfs-${{ matrix.name }}.tar.xz
+          path: rootfs.tar.xz
+          name: rootfs-${{ matrix.name }}.tar.xz
 
       - name: upload qcow2
         uses: actions/upload-artifact@v3
         with:
-          name: d1.qcow2
-          path: d1-sdcard-${{ matrix.name }}.qcow2
+          path: d1.qcow2
+          name: d1-sdcard-${{ matrix.name }}.qcow2
 
       - name: upload raw image
         uses: actions/upload-artifact@v3
         with:
-          name: d1.img
-          path: d1-sdcard-${{ matrix.name }}.img
+          path: d1.img
+          name: d1-sdcard-${{ matrix.name }}.img
