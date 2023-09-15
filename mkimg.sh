@@ -74,13 +74,24 @@ pre_mkrootfs()
 
 make_rootfs()
 {
-    mmdebstrap --architectures=riscv64 \
+<<<<<<< HEAD
+    mmdebstrap --architectures=riscv64 --variant=minbase \
     --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
         sudo bash-completion network-manager openssh-server systemd-timesyncd" \
     sid "$CHROOT_TARGET" \
     "deb https://mirror.iscas.ac.cn/debian-ports/ sid main contrib non-free"
+=======
+    if [ -n $ROOTFS_TARBALL ] && ! (tar xf $ROOTFS_TARBALL -C $CHROOT_TARGET) ; then
+        mmdebstrap --architectures=riscv64 --variant=minbase \
+        --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
+            sudo bash-completion network-manager openssh-server systemd-timesyncd" \
+        sid "$CHROOT_TARGET" \
+        "deb [trusted=yes] ${CUSTOM_MIRROR:-"https://deb.debian.org/debian-ports"} sid main contrib non-free"
+    fi
+>>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 
     # Mount chroot path
+    [ -d "$CHROOT_TARGET"/boot ] || mkdir "$CHROOT_TARGET"/boot
     mount "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot
     # mount -t proc /proc "$CHROOT_TARGET"/proc
     # mount -B /sys "$CHROOT_TARGET"/sys
@@ -89,18 +100,22 @@ make_rootfs()
     # mount -B /dev/pts "$CHROOT_TARGET"/dev/pts
 
     # apt update
+<<<<<<< HEAD
     chroot "$CHROOT_TARGET" sh -c "apt update"
+=======
+    chroot "$CHROOT_TARGET" sh -c "apt update && sed -i 's/\[trusted=yes\] //g' /etc/apt/sources.list" || [ -n $ROOTFS_TARBALL ] && echo custom tarball apt update fail
+>>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 }
 
 make_kernel()
 {
     # Install Kernel
     mkdir $KERNEL_FOLDER
-    [ -f kernel.tar.gz ] || unzip kernel.tar.gz.zip
-    tar xvf kernel.tar.gz -C $KERNEL_FOLDER/
+    [ -f kernel*.tar.gz ] || unzip kernel*.tar.gz.zip
+    tar xvf kernel*.tar.gz -C $KERNEL_FOLDER/
     cp -rv $KERNEL_FOLDER/rootfs/boot/* $CHROOT_TARGET/boot/
     cp -rv $KERNEL_FOLDER/rootfs/lib/* $CHROOT_TARGET/lib/
-    rm -v kernel.tar.gz
+    rm -v kernel*.tar.gz
     rm -r $KERNEL_FOLDER
 }
 
@@ -108,17 +123,17 @@ make_bootable()
 {
     # Install u-boot and opensbi
     mkdir $UBOOT_FOLDER
-    [ -f misc.tar.gz ] || unzip misc.tar.gz.zip
-    tar xvf misc.tar.gz -C $UBOOT_FOLDER/
-    dd if="${UBOOT_FOLDER}/rootfs/boot/u-boot-sunxi-with-spl.bin" of="${LOOP_DEVICE}" bs=1024 seek=128
-    rm -v misc.tar.gz
+    ( ls misc*.tar.gz ) || unzip misc*.tar.gz.zip
+    _UBOOT_SPL_BIN=$(tar xvf misc*.tar.gz -C $UBOOT_FOLDER/ | grep -o ".*-with-spl.bin")
+    dd if=${UBOOT_FOLDER}/${_UBOOT_SPL_BIN} of="${LOOP_DEVICE}" bs=1024 seek=128
+    rm -v misc*.tar.gz
     rm -r $UBOOT_FOLDER
 
-    chroot "$CHROOT_TARGET" sh -c "apt install -y u-boot-menu"
+    chroot "$CHROOT_TARGET" sh -c "apt install -y u-boot-menu" || [ -n $ROOTFS_TARBALL ] && echo apt install u-boot fail
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_ROOT="root=/dev/mmcblk0p2"' | tee -a /etc/default/u-boot"
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_PARAMETERS=\"rw earlycon=sbi console=tty0 console=ttyS0,115200 rootwait \"' | tee -a /etc/default/u-boot"
     # chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_FDT_DIR=\"/boot/dtbs/\"' | tee -a /etc/default/u-boot"
-    chroot "$CHROOT_TARGET" sh -c "u-boot-update"
+    chroot "$CHROOT_TARGET" sh -c "u-boot-update" && echo u-boot-update fail
 }
 
 after_mkrootfs()
@@ -130,8 +145,8 @@ after_mkrootfs()
 	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$ROOT_UUID	/	ext4	rw,relatime	0 1' >> /etc/fstab"
 
     # Add user
-    chroot "$CHROOT_TARGET" sh -c "useradd -m -s /bin/bash -G adm,sudo debian"
-    chroot "$CHROOT_TARGET" sh -c "echo 'debian:debian' | chpasswd"
+    chroot "$CHROOT_TARGET" sh -c "useradd -m -s /bin/bash -G adm,sudo debian" || [ -n $ROOTFS_TARGET ] && echo useradd fail
+    chroot "$CHROOT_TARGET" sh -c "echo 'debian:debian' | chpasswd" || [ -n $ROOTFS_TARGET ] && echo chpasswd fail
 
     # Change hostname
 	chroot "$CHROOT_TARGET" sh -c "echo d1 > /etc/hostname"
@@ -208,12 +223,23 @@ cleanup_env()
 
 main()
 {
+<<<<<<< HEAD
 # 	install_depends
 	make_imagefile
 	pre_mkrootfs
 	make_rootfs
 	make_kernel
 	make_bootable
+=======
+#   install_depends
+    make_imagefile
+    pre_mkrootfs
+  # use CUSTOM_MIRROR to specify mirror
+  # use ROOTFS_TAR = path/to/tar to use exist tarball
+    make_rootfs
+    make_kernel
+    make_bootable
+>>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
   # keep rootfs if KEEP_ROOTFS is not empty, uses in ci
 	after_mkrootfs
 	exit
@@ -230,6 +256,7 @@ trap clean_on_exit EXIT
 
 clean_on_exit()
 {
+<<<<<<< HEAD
     chroot "$CHROOT_TARGET" bash
 	if [ $? -eq 0 ]; then
 		unmount_image
@@ -244,6 +271,21 @@ clean_on_exit()
 		fi
 		echo "interrupted exit."
 	fi
+=======
+    if ( chroot "$CHROOT_TARGET" bash ) ; then
+        unmount_image
+        cleanup_env
+        echo "exit."
+    else
+        unmount_image
+        cleanup_env
+        if [ -f $IMAGE_FILE ]; then
+            echo "delete image $IMAGE_FILE ..."
+            rm -v "$IMAGE_FILE"
+        fi
+        echo "interrupted exit."
+    fi
+>>>>>>> a9d594e (mkimg.sh: add ROOTFS_TARBALL to use custom rootfs)
 }
 
 main
