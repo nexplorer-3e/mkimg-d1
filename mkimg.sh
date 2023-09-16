@@ -50,19 +50,17 @@ make_imagefile()
     truncate -s "$IMAGE_SIZE" "$IMAGE_FILE"
 
     # Create a efi partition and a root partition
-	sgdisk -og "$IMAGE_FILE"
-	sgdisk -n 1:2048:+500M -c 1:"BOOT" -t 1:ef00 "$IMAGE_FILE"
-	ENDSECTOR=$(sgdisk -E "$IMAGE_FILE")
-	sgdisk -n 2:0:"$ENDSECTOR" -c 2:"ROOT" -t 2:8300 -A 2:set:2 "$IMAGE_FILE"
-	sgdisk -p "$IMAGE_FILE"
+    parted -s -a optimal -- "${IMAGE_FILE}" mklabel gpt
+    parted -s -a optimal -- "${IMAGE_FILE}" mkpart primary fat32 40MiB 1024MiB
+    parted -s -a optimal -- "${IMAGE_FILE}" mkpart primary ext4 1064MiB 100%
 
     # Get loop device name
     losetup --partscan --find --show "$IMAGE_FILE"
 	LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
 
     # Format partitions
-	mkfs.ext4 -F -L boot "$LOOP_DEVICE"p1
-	mkfs.ext4 -F -L root "$LOOP_DEVICE"p2
+    mkfs.ext2 -F -L boot "$LOOP_DEVICE"p1
+    mkfs.ext4 -F -L root "$LOOP_DEVICE"p2
 }
 
 pre_mkrootfs()
@@ -249,7 +247,6 @@ trap clean_on_exit EXIT
 
 clean_on_exit()
 {
-<<<<<<< HEAD
     if ( chroot "$CHROOT_TARGET" bash ) || [ -z "$KEEP_IMAGE" ]; then
         unmount_image
         cleanup_env
