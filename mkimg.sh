@@ -130,7 +130,8 @@ make_bootable()
                 ;;
         esac
     fi
-    chroot "$CHROOT_TARGET" sh -c "$APT_UBOOT"
+    # hack for alpine
+    (systemd-nspawn -D "$CHROOT_TARGET" sh -c "APT_UBOOT") || (chroot "$CHROOT_TARGET" sh -c "$APT_UBOOT")
     chroot "$CHROOT_TARGET" sh -c "mkdir -p /etc/default && echo 'U_BOOT_ROOT="root=/dev/mmcblk0p2"' | tee -a /etc/default/u-boot"
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_PARAMETERS=\"rw earlycon=sbi console=tty0 console=ttyS0,115200 rootwait \"' | tee -a /etc/default/u-boot"
     # chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_FDT_DIR=\"/boot/dtbs/\"' | tee -a /etc/default/u-boot"
