@@ -52,6 +52,7 @@ make_imagefile()
     # Create a efi partition and a root partition
     parted -s -a optimal -- "${IMAGE_FILE}" mklabel gpt
     parted -s -a optimal -- "${IMAGE_FILE}" mkpart primary fat32 40MiB 1024MiB
+    parted -s -a optimal -- "${IMAGE_FILE}" set 1 esp on
     parted -s -a optimal -- "${IMAGE_FILE}" mkpart primary ext4 1064MiB 100%
 
     # Get loop device name
