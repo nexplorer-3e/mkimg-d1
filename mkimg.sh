@@ -51,7 +51,7 @@ make_imagefile()
 
     # Create a efi partition and a root partition
 	sgdisk -og "$IMAGE_FILE"
-	sgdisk -n 1:2048:+500M -c 1:"BOOT" -t 1:ef00 "$IMAGE_FILE"
+	sgdisk -n 1:2048:+40M -c 1:"EFI" -t 1:ef00 "$IMAGE_FILE"
 	ENDSECTOR=$(sgdisk -E "$IMAGE_FILE")
 	sgdisk -n 2:0:"$ENDSECTOR" -c 2:"ROOT" -t 2:8300 -A 2:set:2 "$IMAGE_FILE"
 	sgdisk -p "$IMAGE_FILE"
@@ -61,7 +61,7 @@ make_imagefile()
 	LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
 
     # Format partitions
-	mkfs.ext4 -F -L boot "$LOOP_DEVICE"p1
+	mkfs.vfat -F32 -n efi "$LOOP_DEVICE"p1
 	mkfs.ext4 -F -L root "$LOOP_DEVICE"p2
 }
 
@@ -70,6 +70,8 @@ pre_mkrootfs()
     # Mount loop device
 	mkdir "$CHROOT_TARGET"
 	mount "$LOOP_DEVICE"p2 "$CHROOT_TARGET"
+    mkdir "$CHROOT_TARGET"/boot/efi
+    mount "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot/efi
 }
 
 make_rootfs()
@@ -78,15 +80,16 @@ make_rootfs()
     --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
         sudo bash-completion network-manager openssh-server systemd-timesyncd" \
     sid "$CHROOT_TARGET" \
-    "deb https://mirror.iscas.ac.cn/debian-ports/ sid main contrib non-free"
+    "deb https://mirror.iscas.ac.cn/revyos/revyos-base/ sid main contrib non-free non-free-firmware" \
+    "deb https://mirror.iscas.ac.cn/revyos/revyos-addons/ revyos-addons main"
 
     # Mount chroot path
-    mount "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot
-    # mount -t proc /proc "$CHROOT_TARGET"/proc
-    # mount -B /sys "$CHROOT_TARGET"/sys
-    # mount -B /run "$CHROOT_TARGET"/run
-    # mount -B /dev "$CHROOT_TARGET"/dev
-    # mount -B /dev/pts "$CHROOT_TARGET"/dev/pts
+    # mount "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot
+    mount -t proc /proc "$CHROOT_TARGET"/proc
+    mount -B /sys "$CHROOT_TARGET"/sys
+    mount -B /run "$CHROOT_TARGET"/run
+    mount -B /dev "$CHROOT_TARGET"/dev
+    mount -B /dev/pts "$CHROOT_TARGET"/dev/pts
 
     # apt update
     chroot "$CHROOT_TARGET" sh -c "apt update"
@@ -119,14 +122,17 @@ make_bootable()
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_PARAMETERS=\"rw earlycon=sbi console=tty0 console=ttyS0,115200 rootwait \"' | tee -a /etc/default/u-boot"
     # chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_FDT_DIR=\"/boot/dtbs/\"' | tee -a /etc/default/u-boot"
     chroot "$CHROOT_TARGET" sh -c "u-boot-update"
+
+    # Install grub
+    chroot "$CHROOT_TARGET" sh -c "apt install -y grub2-common grub-efi-riscv64-bin"
 }
 
 after_mkrootfs()
 {
     # Set up fstab
-	BOOT_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p1)
+	EFI_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p1)
 	ROOT_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p2)
-	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$BOOT_UUID	/boot	ext4	rw,relatime	0 2' >> /etc/fstab"
+	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$EFI_UUID	/boot/efi	vfat	rw,relatime	0 2' >> /etc/fstab"
 	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$ROOT_UUID	/	ext4	rw,relatime	0 1' >> /etc/fstab"
 
     # Add user
@@ -229,7 +235,6 @@ trap clean_on_exit EXIT
 
 clean_on_exit()
 {
-    chroot "$CHROOT_TARGET" bash
 	if [ $? -eq 0 ]; then
 		unmount_image
 		cleanup_env
