@@ -57,27 +57,28 @@ make_imagefile()
 	sgdisk -p "$IMAGE_FILE"
 
     # Get loop device name
-    losetup --partscan --find --show "$IMAGE_FILE"
-	LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
+    # losetup --partscan --find --show "$IMAGE_FILE"
+    losetup --partscan --show /dev/loop99 "$IMAGE_FILE"
+	# LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
+    LOOP_DEVICE="/dev/loop99"
 
     # Format partitions
-	mkfs.vfat -F32 -n efi "$LOOP_DEVICE"p1
+	mkfs.fat -F 32 -n EFI "$LOOP_DEVICE"p1
 	mkfs.ext4 -F -L root "$LOOP_DEVICE"p2
 }
 
 pre_mkrootfs()
 {
+    partprobe "$LOOP_DEVICE"
     # Mount loop device
 	mkdir "$CHROOT_TARGET"
-	mount "$LOOP_DEVICE"p2 "$CHROOT_TARGET"
-    mkdir "$CHROOT_TARGET"/boot/efi
-    mount "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot/efi
+	mount -t ext4 "$LOOP_DEVICE"p2 "$CHROOT_TARGET"
 }
 
 make_rootfs()
 {
     mmdebstrap --architectures=riscv64 \
-    --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
+    --include="ca-certificates revyos-keyring locales dosfstools \
         sudo bash-completion network-manager openssh-server systemd-timesyncd" \
     sid "$CHROOT_TARGET" \
     "deb https://mirror.iscas.ac.cn/revyos/revyos-base/ sid main contrib non-free non-free-firmware" \
@@ -109,6 +110,14 @@ make_kernel()
 
 make_bootable()
 {
+    # Mount EFI partition
+    mkdir "$CHROOT_TARGET"/boot/efi
+    mount -t vfat "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot/efi
+
+    # Install grub
+    chroot "$CHROOT_TARGET" sh -c "apt install -y grub2-common grub-efi-riscv64-bin"
+    chroot "$CHROOT_TARGET" sh -c "grub-install"
+
     # Install u-boot and opensbi
     # mkdir $UBOOT_FOLDER
     # unzip misc.tar.gz.zip
@@ -122,9 +131,6 @@ make_bootable()
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_PARAMETERS=\"rw earlycon=sbi console=tty0 console=ttyS0,115200 rootwait \"' | tee -a /etc/default/u-boot"
     # chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_FDT_DIR=\"/boot/dtbs/\"' | tee -a /etc/default/u-boot"
     chroot "$CHROOT_TARGET" sh -c "u-boot-update"
-
-    # Install grub
-    chroot "$CHROOT_TARGET" sh -c "apt install -y grub2-common grub-efi-riscv64-bin"
 }
 
 after_mkrootfs()
@@ -203,13 +209,21 @@ cleanup_env()
 {
     echo "Cleanup temp files..."
     # remove temp file here
-    if [ -d "$KERNEL_FOLDER" ]; then
-        rm -rv $KERNEL_FOLDER
-    fi
-    if [ -d "$UBOOT_FOLDER" ]; then
-        rm -rv $UBOOT_FOLDER
-    fi
     echo "Done."
+}
+
+calculate_md5()
+{
+    echo "Calculate MD5 for outputs..."
+		if [ ! -z $IMAGE_FILE ] && [ -f $IMAGE_FILE ]; then
+			echo "$(md5sum $IMAGE_FILE)"
+		fi
+		if [ ! -z $BOOT_IMG ] && [ -f $BOOT_IMG ]; then
+			echo "$(md5sum $BOOT_IMG)"
+		fi
+		if [ ! -z $ROOT_IMG ] && [ -f $ROOT_IMG ]; then
+			echo "$(md5sum $ROOT_IMG)"
+		fi
 }
 
 main()
@@ -238,15 +252,17 @@ clean_on_exit()
 	if [ $? -eq 0 ]; then
 		unmount_image
 		cleanup_env
-		echo "exit."
+		echo "Build succeed."
+        calculate_md5
 	else
+        echo "Interrupted exit $?."
 		unmount_image
 		cleanup_env
-		if [ -f $IMAGE_FILE ]; then
+		if [ ! -z $IMAGE_FILE ] && [ -f $IMAGE_FILE ]; then
 			echo "delete image $IMAGE_FILE ..."
 			rm -v "$IMAGE_FILE"
 		fi
-		echo "interrupted exit."
+		echo "Build failed."
 	fi
 }
 
