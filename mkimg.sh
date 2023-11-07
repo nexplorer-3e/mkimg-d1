@@ -11,8 +11,8 @@ EFI_MOUNTPOINT=""
 BOOT_MOUNTPOINT=""
 ROOT_MOUNTPOINT=""
 
-KERNEL_FOLDER=kernel
-UBOOT_FOLDER=uboot
+KERNEL_FOLDER=..
+UBOOT_FOLDER=..
 
 BASE_TOOLS="binutils file tree sudo bash-completion openssh-server network-manager dnsmasq-base libpam-systemd ppp wireless-regdb wpasupplicant libengine-pkcs11-openssl iptables systemd-timesyncd vim usbutils libgles2 parted exfatprogs systemd-sysv mesa-vulkan-drivers"
 XFCE_DESKTOP="xorg xfce4 desktop-base lightdm xfce4-terminal tango-icon-theme xfce4-notifyd xfce4-power-manager network-manager-gnome xfce4-goodies pulseaudio alsa-utils dbus-user-session rtkit pavucontrol thunar-volman eject gvfs gvfs-backends udisks2 dosfstools e2fsprogs libblockdev-crypto2 ntfs-3g polkitd blueman"
@@ -98,24 +98,24 @@ make_rootfs()
 make_kernel()
 {
     # Install Kernel
-    mkdir $KERNEL_FOLDER
-    unzip kernel.tar.gz.zip
-    tar xvf kernel.tar.gz -C $KERNEL_FOLDER/
+    # mkdir $KERNEL_FOLDER
+    # unzip kernel.tar.gz.zip
+    # tar xvf kernel.tar.gz -C $KERNEL_FOLDER/
     cp -rv $KERNEL_FOLDER/rootfs/boot/* $CHROOT_TARGET/boot/
     cp -rv $KERNEL_FOLDER/rootfs/lib/* $CHROOT_TARGET/lib/
-    rm -v kernel.tar.gz
-    rm -r $KERNEL_FOLDER
+    # rm -v kernel.tar.gz
+    # rm -r $KERNEL_FOLDER
 }
 
 make_bootable()
 {
     # Install u-boot and opensbi
-    mkdir $UBOOT_FOLDER
-    unzip misc.tar.gz.zip
-    tar xvf misc.tar.gz -C $UBOOT_FOLDER/
+    # mkdir $UBOOT_FOLDER
+    # unzip misc.tar.gz.zip
+    # tar xvf misc.tar.gz -C $UBOOT_FOLDER/
     dd if="${UBOOT_FOLDER}/rootfs/boot/u-boot-sunxi-with-spl.bin" of="${LOOP_DEVICE}" bs=1024 seek=128
-    rm -v misc.tar.gz
-    rm -r $UBOOT_FOLDER
+    # rm -v misc.tar.gz
+    # rm -r $UBOOT_FOLDER
 
     chroot "$CHROOT_TARGET" sh -c "apt install -y u-boot-menu"
     chroot "$CHROOT_TARGET" sh -c "echo 'U_BOOT_ROOT="root=/dev/mmcblk0p2"' | tee -a /etc/default/u-boot"
