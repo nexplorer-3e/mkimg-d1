@@ -16,11 +16,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        toolchain_name: [thead-gcc, gcc-12]
+        board_name: [devterm_r_01, dongshan_nezha_stu, lichee_rv_86_panel, lichee_rv_dock, mangopi_mq_pro, nezha]
         include:
           - name: thead-gcc
             toolchain_tripe: riscv64-unknown-linux-gnu-
           - name: gcc-12
             toolchain_tripe: riscv64-linux-gnu-
+          - name: devterm_r_01
+            board_config: devterm_r_01_defconfig
+          - name: dongshan_nezha_stu
+            board_config: dongshan_nezha_stu_defconfig
+          - name: lichee_rv_86_panel
+            board_config: lichee_rv_86_panel_defconfig
+          - name: lichee_rv_dock
+            board_config: lichee_rv_dock_defconfig
+          - name: mangopi_mq_pro
+            board_config: mangopi_mq_pro_defconfig
+          - name: nezha
+            board_config: nezha_defconfig
 
     runs-on: ubuntu-22.04
     env:
@@ -186,67 +200,19 @@ jobs:
                 done
               popd
 
-      - name: compress
-        run: tar -zcvf kernel-${{ matrix.name }}.tar.gz rootfs
-
-      - name: 'Upload Artifact'
-        uses: actions/upload-artifact@v3
-        with:
-          name: kernel-${{ matrix.name }}.tar.gz
-          path: kernel-${{ matrix.name }}.tar.gz
-          retention-days: 30
-
-  misc:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: devterm_r_01
-            board_config: devterm_r_01_defconfig
-          - name: dongshan_nezha_stu
-            board_config: dongshan_nezha_stu_defconfig
-          - name: lichee_rv_86_panel
-            board_config: lichee_rv_86_panel_defconfig
-          - name: lichee_rv_dock
-            board_config: lichee_rv_dock_defconfig
-          - name: mangopi_mq_pro
-            board_config: mangopi_mq_pro_defconfig
-          - name: nezha
-            board_config: nezha_defconfig
-    runs-on: ubuntu-22.04
-    env:
-      CROSS_COMPILE: riscv64-linux-gnu-
-    steps:
-      - name: Install software
-        run: |
-              sudo apt update && \
-              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
-                                  libncurses-dev gawk flex bison openssl libssl-dev tree \
-                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
-              sudo update-alternatives --install \
-                  /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
-              sudo update-alternatives --install \
-                  /usr/bin/riscv64-linux-gnu-g++ riscv64-g++ /usr/bin/riscv64-linux-gnu-g++-12 10
-
       - name: Checkout uboot
         uses: actions/checkout@v3
         with:
             repository: 'smaeul/u-boot'
             ref: 'd1-wip'
             path: 'uboot'
-
+      
       - name: Checkout opensbi
         uses: actions/checkout@v3
         with:
             repository: 'riscv-software-src/opensbi'
             ref: 'master'
             path: 'opensbi'
-
-      - name: Configure toolchains
-        run: |
-              mkdir rootfs && mkdir rootfs/boot
-              wget ${xuetie_toolchain}/${toolchain_file_name}
-              tar -xvf ${toolchain_file_name} -C /opt
 
       - name: opensbi compile
         run: |
@@ -269,14 +235,14 @@ jobs:
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-${{ matrix.name }}-with-spl.bin"
               popd
-              tree ${GITHUB_WORKSPACE}/rootfs
+              tree ${GITHUB_WORKSPACE}/rootfs     
 
       - name: compress
-        run: tar -zcvf misc-${{ matrix.name }}.tar.gz rootfs
+        run: tar -zcvf kernel-misc-${{ matrix.name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: misc-${{ matrix.name }}.tar.gz
-          path: misc-${{ matrix.name }}.tar.gz
+          name: kernel-misc-${{ matrix.name }}.tar.gz
+          path: kernel-misc-${{ matrix.name }}.tar.gz
           retention-days: 30
