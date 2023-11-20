@@ -268,7 +268,7 @@ trap clean_on_exit EXIT
 
 clean_on_exit()
 {
-    if ( chroot "$CHROOT_TARGET" bash ) || [ -z "$KEEP_IMAGE" ]; then
+    if ( chroot "$CHROOT_TARGET" /bin/bash ) || [ -z "$KEEP_IMAGE" ]; then
         unmount_image
         cleanup_env
         echo "Build succeed."
