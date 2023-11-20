@@ -283,7 +283,19 @@ jobs:
           path: qemu
           ref: ab8f84892a89feea60f1bb24432ff58ce6d2885c  # TODO: remove this line
 
+      - name: Hash branch status
+        run: |
+          git -C kernel log -1 |tee refs.log
+
+      - name: Skip if branch has compiled
+        id: cache-qemu
+        uses: actions/cache/restore@v3
+        with:
+          path: qemu/
+          key: ${{ hashFiles('refs.log') }}
+
       - name: build qemu
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
         run: |
             pushd qemu
               ./configure \
@@ -294,8 +306,18 @@ jobs:
                 --disable-pie \
                 --interp-prefix=/etc/qemu-binfmt/%M
               make -j$(nproc)
-              make install
+            popd
 
+      - uses: actions/cache/save@v3
+        if: steps.cache-qemu.outputs.cache-hit != 'true'
+        with:
+          path: qemu/
+          key: ${{ hashFiles('refs.log') }}
+        
+      - name: install qemu
+        run: |
+            pushd qemu
+              make install
               sudo cp -fv $HOME/qemu-install/bin/qemu-riscv64 /usr/bin/qemu-riscv64-static
             popd
             ls -al /usr/bin/qemu-riscv64-static
