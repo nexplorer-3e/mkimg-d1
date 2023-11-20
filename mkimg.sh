@@ -77,11 +77,12 @@ pre_mkrootfs()
 make_rootfs()
 {
     if [ -n $ROOTFS_TARBALL ] && ! (tar xf $ROOTFS_TARBALL -C $CHROOT_TARGET) ; then
-        mmdebstrap --architectures=riscv64 --variant=minbase \
-        --include="ca-certificates debian-ports-archive-keyring locales dosfstools \
-            sudo bash-completion network-manager openssh-server systemd-timesyncd" \
+        mmdebstrap --architectures=riscv64 \
+        --include="ca-certificates revyos-keyring locales dosfstools \
+        sudo bash-completion network-manager openssh-server systemd-timesyncd" \
         sid "$CHROOT_TARGET" \
-        "deb [trusted=yes] ${CUSTOM_MIRROR:-"https://deb.debian.org/debian-ports"} sid main contrib non-free"
+        "deb [trusted=yes] https://mirror.iscas.ac.cn/revyos/revyos-base/ sid main contrib non-free non-free-firmware" \
+        "deb [truestd=yes] https://mirror.iscas.ac.cn/revyos/revyos-addons/ revyos-addons main"
     fi
 
     # Mount chroot path
