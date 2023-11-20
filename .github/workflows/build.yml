@@ -243,9 +243,10 @@ jobs:
       - name: Install software
         run: |
               sudo apt update && \
-              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
+              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential autoconf automake autotools-dev ninja-build make \
                                   libncurses-dev gawk flex bison openssl libssl-dev tree \
-                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
+                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev device-tree-compiler \
+                                  qemu-user-static binfmt-support mmdebstrap
               sudo update-alternatives --install \
                   /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
               sudo update-alternatives --install \
@@ -302,7 +303,7 @@ jobs:
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
               pushd uboot
-                make ${{ matrix.board_config }}
+                make nezha_defconfig
                 OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
                   "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-sunxi-with-spl.bin"
