@@ -82,7 +82,7 @@ make_rootfs()
         sudo bash-completion network-manager openssh-server systemd-timesyncd" \
         sid "$CHROOT_TARGET" \
         "deb [trusted=yes] https://mirror.iscas.ac.cn/revyos/revyos-base/ sid main contrib non-free non-free-firmware" \
-        "deb [truestd=yes] https://mirror.iscas.ac.cn/revyos/revyos-addons/ revyos-addons main"
+        "deb [trusted=yes] https://mirror.iscas.ac.cn/revyos/revyos-addons/ revyos-addons main"
     fi
 
     # Mount chroot path
@@ -95,7 +95,7 @@ make_rootfs()
     # mount -B /dev/pts "$CHROOT_TARGET"/dev/pts
 
     # apt update
-    chroot "$CHROOT_TARGET" sh -c "apt update && sed -i 's/\[trusted=yes\] //g' /etc/apt/sources.list" || [ -n $ROOTFS_TARBALL ] && echo custom tarball apt update fail
+    chroot "$CHROOT_TARGET" /bin/sh -c "apt update && sed -i 's/\[trusted=yes\] //g' /etc/apt/sources.list" || [ -n $ROOTFS_TARBALL ] && echo custom tarball apt update fail
 }
 
 make_kernel()
