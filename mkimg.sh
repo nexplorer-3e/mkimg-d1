@@ -11,8 +11,8 @@ EFI_MOUNTPOINT=""
 BOOT_MOUNTPOINT=""
 ROOT_MOUNTPOINT=""
 
-KERNEL_FOLDER=kernel
-UBOOT_FOLDER=uboot
+KERNEL_FOLDER=..
+UBOOT_FOLDER=..
 
 BASE_TOOLS="binutils file tree sudo bash-completion openssh-server network-manager dnsmasq-base libpam-systemd ppp wireless-regdb wpasupplicant libengine-pkcs11-openssl iptables systemd-timesyncd vim usbutils libgles2 parted exfatprogs systemd-sysv mesa-vulkan-drivers"
 XFCE_DESKTOP="xorg xfce4 desktop-base lightdm xfce4-terminal tango-icon-theme xfce4-notifyd xfce4-power-manager network-manager-gnome xfce4-goodies pulseaudio alsa-utils dbus-user-session rtkit pavucontrol thunar-volman eject gvfs gvfs-backends udisks2 dosfstools e2fsprogs libblockdev-crypto2 ntfs-3g polkitd blueman"
@@ -56,8 +56,10 @@ make_imagefile()
     parted -s -a optimal -- "${IMAGE_FILE}" mkpart primary ext4 1064MiB 100%
 
     # Get loop device name
-    losetup --partscan --find --show "$IMAGE_FILE"
-	LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
+    # losetup --partscan --find --show "$IMAGE_FILE"
+    losetup --partscan --show /dev/loop99 "$IMAGE_FILE"
+	# LOOP_DEVICE=$(losetup -j "$IMAGE_FILE" | grep -o "/dev/loop[0-9]*")
+    LOOP_DEVICE="/dev/loop99"
 
     # Format partitions
     mkfs.ext2 -F -L boot "$LOOP_DEVICE"p1
@@ -66,9 +68,10 @@ make_imagefile()
 
 pre_mkrootfs()
 {
+    partprobe "$LOOP_DEVICE"
     # Mount loop device
 	mkdir "$CHROOT_TARGET"
-	mount "$LOOP_DEVICE"p2 "$CHROOT_TARGET"
+	mount -t ext4 "$LOOP_DEVICE"p2 "$CHROOT_TARGET"
 }
 
 make_rootfs()
@@ -108,6 +111,14 @@ make_kernel()
 
 make_bootable()
 {
+    # Mount EFI partition
+    mkdir "$CHROOT_TARGET"/boot/efi
+    mount -t vfat "$LOOP_DEVICE"p1 "$CHROOT_TARGET"/boot/efi
+
+    # Install grub
+    chroot "$CHROOT_TARGET" sh -c "apt install -y grub2-common grub-efi-riscv64-bin"
+    chroot "$CHROOT_TARGET" sh -c "grub-install"
+
     # Install u-boot and opensbi
     mkdir $UBOOT_FOLDER
     ( ls misc*.tar.gz ) || unzip misc*.tar.gz.zip
@@ -140,9 +151,9 @@ make_bootable()
 after_mkrootfs()
 {
     # Set up fstab
-	BOOT_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p1)
+	EFI_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p1)
 	ROOT_UUID=$(blkid -o value -s UUID "$LOOP_DEVICE"p2)
-	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$BOOT_UUID	/boot	ext4	rw,relatime	0 2' >> /etc/fstab"
+	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$EFI_UUID	/boot/efi	vfat	rw,relatime	0 2' >> /etc/fstab"
 	chroot "$CHROOT_TARGET" sh -c "echo 'UUID=$ROOT_UUID	/	ext4	rw,relatime	0 1' >> /etc/fstab"
 
     # Add user
@@ -213,13 +224,21 @@ cleanup_env()
 {
     echo "Cleanup temp files..."
     # remove temp file here
-    if [ -d "$KERNEL_FOLDER" ]; then
-        rm -rv $KERNEL_FOLDER
-    fi
-    if [ -d "$UBOOT_FOLDER" ]; then
-        rm -rv $UBOOT_FOLDER
-    fi
     echo "Done."
+}
+
+calculate_md5()
+{
+    echo "Calculate MD5 for outputs..."
+		if [ ! -z $IMAGE_FILE ] && [ -f $IMAGE_FILE ]; then
+			echo "$(md5sum $IMAGE_FILE)"
+		fi
+		if [ ! -z $BOOT_IMG ] && [ -f $BOOT_IMG ]; then
+			echo "$(md5sum $BOOT_IMG)"
+		fi
+		if [ ! -z $ROOT_IMG ] && [ -f $ROOT_IMG ]; then
+			echo "$(md5sum $ROOT_IMG)"
+		fi
 }
 
 main()
@@ -251,7 +270,8 @@ clean_on_exit()
     if ( chroot "$CHROOT_TARGET" bash ) || [ -z "$KEEP_IMAGE" ]; then
         unmount_image
         cleanup_env
-        echo "exit."
+        echo "Build succeed."
+        calculate_md5
     else
         unmount_image
         cleanup_env

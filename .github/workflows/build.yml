@@ -30,13 +30,16 @@ jobs:
       - name: Install software
         run: |
               sudo apt update && \
-              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential \
+              sudo apt install -y gdisk dosfstools g++-12-riscv64-linux-gnu build-essential autoconf automake autotools-dev ninja-build make \
                                   libncurses-dev gawk flex bison openssl libssl-dev tree \
-                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev autoconf device-tree-compiler
+                                  dkms libelf-dev libudev-dev libpci-dev libiberty-dev device-tree-compiler \
+                                  qemu-user-static binfmt-support mmdebstrap
               sudo update-alternatives --install \
                   /usr/bin/riscv64-linux-gnu-gcc riscv64-gcc /usr/bin/riscv64-linux-gnu-gcc-12 10
               sudo update-alternatives --install \
                   /usr/bin/riscv64-linux-gnu-g++ riscv64-g++ /usr/bin/riscv64-linux-gnu-g++-12 10
+              wget https://mirror.iscas.ac.cn/revyos/revyos-addons/pool/main/r/revyos-keyring/revyos-keyring_2023.06.12_all.deb
+                  sudo apt install ./revyos-keyring_2023.06.12_all.deb
 
       - name: Checkout kernel
         uses: actions/checkout@v3
@@ -254,7 +257,7 @@ jobs:
             repository: 'smaeul/u-boot'
             ref: 'd1-wip'
             path: 'uboot'
-
+      
       - name: Checkout opensbi
         uses: actions/checkout@v3
         with:
@@ -302,25 +305,63 @@ jobs:
                 make ${{ matrix.board_config }}
                 OPENSBI=${GITHUB_WORKSPACE}/rootfs/boot/fw_dynamic.bin make -j$(nproc)
                 sudo install -D -p -m 644 u-boot-sunxi-with-spl.bin \
-                  "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-${{ matrix.name }}-with-spl.bin"
+                  "${GITHUB_WORKSPACE}/rootfs/boot/u-boot-sunxi-with-spl.bin"
               popd
               tree ${GITHUB_WORKSPACE}/rootfs
 
+      - name: Checkout qemu
+        uses: actions/checkout@v3
+        with:
+          repository: revyos/qemu
+          path: qemu
+          ref: ab8f84892a89feea60f1bb24432ff58ce6d2885c  # TODO: remove this line
+
+      - name: build qemu
+        run: |
+            pushd qemu
+              ./configure \
+                --prefix=$HOME/qemu-install \
+                --static \
+                --target-list=riscv64-linux-user \
+                --disable-system \
+                --disable-pie \
+                --interp-prefix=/etc/qemu-binfmt/%M
+              make -j$(nproc)
+              make install
+
+              sudo cp -fv $HOME/qemu-install/bin/qemu-riscv64 /usr/bin/qemu-riscv64-static
+            popd
+            ls -al /usr/bin/qemu-riscv64-static
+            sudo dpkg-reconfigure binfmt-support
+            
+      - name: Checkout mkimg
+        uses: actions/checkout@v3
+        with:
+            ref: 'ci'
+            path: 'mkimg'
+
+      - name: Make Image
+        run: |
+          pushd mkimg
+            sudo ./mkimg.sh
+            cp -v *.img ${GITHUB_WORKSPACE}/rootfs/
+          popd
+
       - name: compress
         if: steps.cache.outputs.cache-hit != 'true'
-        run: tar -zcvf misc-${{ matrix.name }}.tar.gz rootfs
+        run: tar -zcvf ${{ matrix.name }}.tar.gz rootfs
 
       - uses: actions/cache/save@v3
         if: steps.cache.outputs.cache-hit != 'true'
         with:
-          path: misc-${{ matrix.name }}.tar.gz
+          path: ${{ matrix.name }}.tar.gz
           key: ${{ hashFiles('refs.log') }}
 
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
         with:
-          name: misc-${{ matrix.name }}.tar.gz
-          path: misc-${{ matrix.name }}.tar.gz
+          name: ${{ matrix.name }}.tar.gz
+          path: ${{ matrix.name }}.tar.gz
             
   revyos-rootfs:
     runs-on: ubuntu-latest
@@ -343,7 +384,7 @@ jobs:
       - name: get uboot
         uses: actions/download-artifact@v3
         with:
-          name: misc-${{ matrix.name }}.tar.gz
+          name: ${{ matrix.name }}.tar.gz
 
       - name: build rootfs
         run: |
