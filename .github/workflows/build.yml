@@ -56,6 +56,29 @@ jobs:
               wget https://mirror.iscas.ac.cn/revyos/revyos-addons/pool/main/r/revyos-keyring/revyos-keyring_2023.06.12_all.deb
                   sudo apt install ./revyos-keyring_2023.06.12_all.deb
 
+      - name: Cache toolchains
+        id: cache-theadgcc
+        uses: actions/cache/restore@v3
+        with:
+          key: ${{ env.xuetie_toolchain }}/${{ env.toolchain_file_name }}
+          path: ${{ env.toolchain_file_name }}
+
+      - name: Download toolchains
+        if: steps.cache-theadgcc.outputs.cache-hit != 'true'
+        run: |
+          wget ${xuetie_toolchain}/${toolchain_file_name}
+
+      - name: Configure toolchains
+        run: |
+          # TODO: add path to output
+          tar -xvf ${toolchain_file_name} -C /opt
+
+      - uses: actions/cache/save@v3
+        if: steps.cache-theadgcc.outputs.cache-hit != 'true'
+        with:
+          key: ${{ env.xuetie_toolchain }}/${{ env.toolchain_file_name }}
+          path: ${{ env.toolchain_file_name }}
+
       - name: Checkout kernel
         uses: actions/checkout@v3
         with:
@@ -66,27 +89,19 @@ jobs:
 
       - name: Hash branch status
         run: |
-          git -C kernel log -1 > refs.log
+          git -C kernel log -1 --format='%H' > refs.log
 
       - name: Skip if branch has compiled
         id: cache-kernel
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
-          path: refs.log
-          key: ${{ hashFiles('refs.log') }}
-            
-      - name: Configure toolchains
-        if: steps.cache-kernel.outputs.cache-hit != 'true'
-        run: |
-              mkdir rootfs && mkdir rootfs/boot
-              wget ${xuetie_toolchain}/${toolchain_file_name}
-              tar -xvf ${toolchain_file_name} -C /opt
+          path: kernel/
+          key: kernel-${{ hashFiles('refs.log') }}
 
-      - name: Compile Kernel && Install
+      - name: Compile Kernel
         if: steps.cache-kernel.outputs.cache-hit != 'true'
         run: |
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
-
               pushd kernel
                 # TODO: confirm config for target board
 
@@ -181,42 +196,56 @@ jobs:
                 make nezha_defconfig
                 make -j$(nproc)
                 make -j$(nproc) dtbs
-                if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
-                  sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
-                fi
-                # sudo make INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
-
-                # Install Kernel
-                sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install
-                sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot dtbs_install
-                sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
-
-                # record commit-id
-                git rev-parse HEAD > kernel-commitid
-                sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
 
                 # Install DTB
                 # sudo cp -v arch/riscv/boot/dts/allwinner/*.dtb ${GITHUB_WORKSPACE}/rootfs/boot/
+                git clone https://github.com/lwfinger/rtl8723ds.git
+                pushd rtl8723ds
+                  make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} KSRC=../ -j$(nproc) modules || true
+                popd
 
                 # Copy kernel deb packages
                 make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} bindeb-pkg -j$(nproc)
-                cp -v ../*.deb ${GITHUB_WORKSPACE}/rootfs/
-
-                # Install RTL8723DS Driver
-                git clone https://github.com/lwfinger/rtl8723ds.git
-                pushd rtl8723ds
-                    make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} KSRC=../ -j$(nproc) modules || true
-                popd
-                for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
-                do
-                    sudo install -D -p -m 644 "rtl8723ds/8723ds.ko" \
-                        "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/kernel/drivers/net/wireless/8723ds.ko"
-                    depmod -a -b "${GITHUB_WORKSPACE}/rootfs" "${kernel_version}"
-                    echo '8723ds' >> 8723ds.conf
-                    sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/
-                    sudo cp -v 8723ds.conf "${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/"
-                done
               popd
+
+      - name: Install kernel
+        run: |
+          mkdir -p rootfs/boot/
+          export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
+          pushd kernel
+            if [ x"$(cat .config | grep CONFIG_MODULES=y)" = x"CONFIG_MODULES=y" ]; then
+              sudo make INSTALL_MOD_PATH=${GITHUB_WORKSPACE}/rootfs/ modules_install -j$(nproc)
+            fi
+            # sudo make INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot zinstall -j$(nproc)
+
+            # record commit-id
+            git rev-parse HEAD > kernel-commitid
+            sudo cp -v kernel-commitid ${GITHUB_WORKSPACE}/rootfs/boot/
+ 
+            # Install Kernel
+            sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot install
+            sudo make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} INSTALL_PATH=${GITHUB_WORKSPACE}/rootfs/boot dtbs_install
+            sudo cp -v arch/riscv/boot/Image ${GITHUB_WORKSPACE}/rootfs/boot/
+ 
+            # Copy kernel deb packages
+            cp -v ../*.deb ${GITHUB_WORKSPACE}/rootfs/
+
+            # Install RTL8723DS Driver
+            for kernel_version in $(ls ${GITHUB_WORKSPACE}/rootfs/lib/modules/);
+            do
+                sudo install -D -p -m 644 "rtl8723ds/8723ds.ko" \
+                    "${GITHUB_WORKSPACE}/rootfs/lib/modules/${kernel_version}/kernel/drivers/net/wireless/8723ds.ko"
+                depmod -a -b "${GITHUB_WORKSPACE}/rootfs" "${kernel_version}"
+                echo '8723ds' >> 8723ds.conf
+                sudo mkdir -p ${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/
+                sudo cp -v 8723ds.conf "${GITHUB_WORKSPACE}/rootfs/etc/modules-load.d/"
+            done
+          popd
+      - uses: actions/cache/save@v3
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
+        with:
+          path: kernel/
+          key: kernel-${{ hashFiles('refs.log') }}
 
       - name: Checkout uboot
         uses: actions/checkout@v3
@@ -232,27 +261,7 @@ jobs:
             ref: 'master'
             path: 'opensbi'
 
-      - name: Hash branch status
-        run: |
-          git -C uboot log -1 > refs.log
-          git -C opensbi log -1 >> refs.log
-
-      - name: Skip if branch has compiled
-        id: cache
-        uses: actions/cache@v3
-        with:
-          path: refs.log
-          key: ${{ hashFiles('refs.log') }}
-       
-      - name: Configure toolchains
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-              mkdir rootfs && mkdir rootfs/boot
-              wget ${xuetie_toolchain}/${toolchain_file_name}
-              tar -xvf ${toolchain_file_name} -C /opt
-
       - name: opensbi compile
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
             export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
       
@@ -264,7 +273,6 @@ jobs:
             tree ${GITHUB_WORKSPACE}/rootfs
 
       - name: uboot compile
-        if: steps.cache.outputs.cache-hit != 'true'
         run: |
               export PATH="/opt/Xuantie-900-gcc-linux-5.10.4-glibc-x86_64-V2.6.1/bin:$PATH"
 
@@ -285,14 +293,14 @@ jobs:
 
       - name: Hash branch status
         run: |
-          git -C kernel log -1 |tee refs.log
+          git -C kernel log -1 --format='%H' > refs.log
 
       - name: Skip if branch has compiled
         id: cache-qemu
         uses: actions/cache/restore@v3
         with:
           path: qemu/
-          key: ${{ hashFiles('refs.log') }}
+          key: qemu-${{ hashFiles('refs.log') }}
 
       - name: build qemu
         if: steps.cache-qemu.outputs.cache-hit != 'true'
@@ -312,7 +320,7 @@ jobs:
         if: steps.cache-qemu.outputs.cache-hit != 'true'
         with:
           path: qemu/
-          key: ${{ hashFiles('refs.log') }}
+          key: qemu-${{ hashFiles('refs.log') }}
         
       - name: install qemu
         run: |
@@ -338,11 +346,9 @@ jobs:
           popd
 
       - name: compress
-        if: steps.cache.outputs.cache-hit != 'true'
         run: tar -zcvf ${{ matrix.board_name }}.tar.gz rootfs
 
       - name: 'Upload Artifact'
-        if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.board_name }}.tar.gz
