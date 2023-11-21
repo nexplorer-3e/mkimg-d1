@@ -334,15 +334,12 @@ jobs:
       - name: Checkout mkimg
         uses: actions/checkout@v3
         with:
-            repository: 'revyos/mkimg-d1'
-            ref: 'vector-support'
             path: 'mkimg'
 
       - name: Make Image
         run: |
           pushd mkimg
             sudo ./mkimg.sh
-            cp -v *.img ${GITHUB_WORKSPACE}/rootfs/
           popd
 
       - name: compress
@@ -353,4 +350,7 @@ jobs:
         with:
           name: ${{ matrix.board_name }}.tar.gz
           path: ${{ matrix.board_name }}.tar.gz
-          retention-days: 30
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.board_name }}.img
+          path: mkimg/*.img
