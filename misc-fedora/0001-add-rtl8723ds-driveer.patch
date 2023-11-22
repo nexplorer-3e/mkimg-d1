@@ -1,0 +1,24 @@
+From 0c04370b07a87c04fe52633994a0d9cfa5a67739 Mon Sep 17 00:00:00 2001
+From: eval <60149113+nexplorer-3e@users.noreply.github.com>
+Date: Tue, 21 Nov 2023 15:39:57 +0800
+Subject: add rtl8723ds driveer
+
+---
+ drivers/net/wireless/Makefile | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/net/wireless/Makefile b/drivers/net/wireless/Makefile
+index 382894ab6..9a5815e4e 100644
+--- a/drivers/net/wireless/Makefile
++++ b/drivers/net/wireless/Makefile
+@@ -31,6 +31,7 @@ obj-$(CONFIG_MAC80211_HWSIM)	+= mac80211_hwsim.o
+ obj-$(CONFIG_VIRT_WIFI)	+= virt_wifi.o
+ 
+ obj-$(CONFIG_XR829_WLAN)   += xr829/
++obj-$(CONFIG_RTL8723DS) += rtl8723ds/
+ obj-$(CONFIG_SPARD_WLAN_SUPPORT) += uwe5622/
+ obj-$(CONFIG_BCMDHD) += bcmdhd/
+ obj-$(CONFIG_AIC_WLAN_SUPPORT) += aic8800/
+-- 
+2.42.0
+
